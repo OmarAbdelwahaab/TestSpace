@@ -1,20 +1,22 @@
-import requests
 import uvicorn
-import random
-from typing import Annotated
-from fastapi import FastAPI, HTTPException, Query, Response
-
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 
 app = FastAPI()
 
-items_db = []
 
-t1 = [1 , "clean room" , True]
-t2 = [2 , "Cooking a meal" , False]
-t3 = [3 , "go to the gym" , True]
+class TaskCreate(BaseModel):
+    title: str
 
-tasks = [t1 , t2 ,t3]
+tasks = [
+    [1, "clean room", True],
+    [2, "Cooking a meal", False],
+    [3, "go to the gym", True],
+]
+
+tid = 3
+
 
 @app.get("/")
 def Details():
@@ -25,15 +27,24 @@ def CheckHealth():
     return { "status": "ok" }
 
 @app.get("/tasks/{id}")
-def Get_Tasks(id: int):
-    if id == 1:
-        return t1
-    elif id == 2:
-        return t2
-    elif id == 3:
-        return t3
-    else:
-        return("status_code=404", { "error": f"Task {id} not found" })
+def get_task(id: int):
+    for task in tasks:
+        if task[0] == id:
+            return task
+    raise HTTPException(status_code=404, detail=f"Task {id} not found")
+
+
+@app.post("/tasks")
+def add_task(task: TaskCreate):
+    global tid
+    if task.title == "":
+        raise HTTPException(status_code=404)
+    tid += 1
+    new_task = [tid, task.title, False]
+    tasks.append(new_task)
+    return tasks
+
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
