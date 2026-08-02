@@ -21,15 +21,15 @@ tasks = [
 
 tid = 3
 
-@app.get("/")
+@app.get("/", description="Get some details")
 def Details():
     return { "name": "Task API", "version": "1.0", "endpoints":  ["/tasks"] }
 
-@app.get("/health")
+@app.get("/health", description="Check for the API State")
 def CheckHealth():
     return { "status": "ok" }
 
-@app.get("/tasks/{id}")
+@app.get("/tasks/{id}", description="Get the wanted task")
 def get_task(id: int):
     for task in tasks:
         if task[0] == id:
@@ -37,7 +37,7 @@ def get_task(id: int):
     raise HTTPException(status_code=404, detail=f"Task {id} not found")
 
 
-@app.post("/tasks")
+@app.post("/tasks", description="Add a new task")
 def add_task(task: TaskCreate):
     global tid
     if task.title == "":
@@ -49,7 +49,7 @@ def add_task(task: TaskCreate):
 
 
 
-@app.put("/tasks/:id")
+@app.put("/tasks/:id", description="Update a task")
 def update_task(task : TaskCreate ,tid : int):
     
     if tid > len(tasks) or tid == 0:
@@ -64,7 +64,7 @@ def update_task(task : TaskCreate ,tid : int):
         tasks[tid] = updatedTask
         return updatedTask
 
-@app.delete("/tasks/:id")
+@app.delete("/tasks/:id", description="Delete a task")
 def delete_task(tid: int):
     
     if tid > len(tasks) or tid == 0:
@@ -74,6 +74,7 @@ def delete_task(tid: int):
     del tasks[index]        
     raise HTTPException(status_code=204)
   
+    
     
     
 if __name__ == "__main__":
