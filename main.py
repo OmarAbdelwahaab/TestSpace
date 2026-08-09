@@ -1,9 +1,50 @@
-import uvicorn, requests
+import uvicorn, requests, sqlite3
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
+
 app = FastAPI()
+
+connection = sqlite3.connect('tasks.db')
+c = connection.cursor()
+
+EXAMPLE_TASKS = [
+    ("Buy groceries", 0),
+    ("Read Python documentation", 0),
+    ("Build SQLite app", 1),
+]
+
+
+def init_db():
+    with sqlite3.connect("tasks.db") as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                done BOOLEAN NOT NULL DEFAULT 0
+            )
+        """
+        )
+        c.execute("SELECT COUNT(*) FROM tasks")
+        if c.fetchone()[0] == 0:
+            c.executemany(
+                "INSERT INTO tasks (title, done) VALUES (?, ?)", EXAMPLE_TASKS
+            )
+        conn.commit()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Runs when FastAPI starts up
+    init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 class TaskCreate(BaseModel):
