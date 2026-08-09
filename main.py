@@ -1,31 +1,14 @@
 import uvicorn, requests, sqlite3
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional
 
-app = FastAPI()
-
-tid = 1
-
-tasks = [
-    [1, "clean room", True],
-    [2, "Cooking a meal", False],
-    [3, "go to the gym", True],
-]
-
-tid = 3
-
 EXAMPLE_TASKS = [
-    (tasks[0][1], 1),
-    (tasks[1][1], 0),
-    (tasks[2][1], 1),
+    ("clean room", 1),
+    ("Cooking a meal", 0),
+    ("go to the gym", 1),
 ]
-
-
-connection = sqlite3.connect('tasks.db')
-c = connection.cursor()
-
 
 
 def init_db():
@@ -86,55 +69,52 @@ def show_all_tasks():
     
 @app.get("/tasks/{id}", description="Get the wanted task")
 def get_task(id: int):
-    for task in tasks:
-        if task[0] == id:
-            conn = sqlite3.connect('tasks.db')
-            c = conn.cursor()
-            c.execute("SELECT * FROM tasks WHERE id = (?)", (id,))
-            item = c.fetchall()
-            return(item)
-    raise HTTPException(status_code=404, detail=f"Task {id} not found")
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM tasks WHERE id = ?", (id,))
+    item = c.fetchone()
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"Task {id} not found")
+    return item
 
 
 @app.post("/tasks", description="Add a new task")
 def add_task(task: TaskCreate):
-    global tid
-    if task.title == "":
-        raise HTTPException(status_code=404)
-    tid += 1
+    if not task.title:
+        raise HTTPException(status_code=400, detail="Title is required")
     conn = sqlite3.connect('tasks.db')
     c = conn.cursor()
     c.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (task.title, False))
-    items = c.fetchall()
     conn.commit()
-    return(items)
+    task_id = c.lastrowid
+    c.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    return c.fetchone()
 
- 
 
-@app.put("/tasks/:id", description="Update a task")
-def update_task(task : TaskCreate ,tid : int):
-    
-    if tid > len(tasks) or tid == 0:
-            raise HTTPException(status_code=404)
-        
-    elif (task.title == "") or (task.state is None):
+@app.put("/tasks/{id}", description="Update a task")
+def update_task(id: int, task: TaskCreate):
+    if not task.title or task.state is None:
         raise HTTPException(status_code=400, detail="Empty/Invalid body")
-        
-    else:
-        tid -= 1 
-        updatedTask = [tasks[tid][0], task.title, task.state]
-        tasks[tid] = updatedTask
-        return updatedTask
 
-@app.delete("/tasks/:id", description="Delete a task")
-def delete_task(tid: int):
-    
-    if tid > len(tasks) or tid == 0:
-            raise HTTPException(status_code=404, detail=f"Task {tid} not found")
-            
-    index = tid - 1
-    del tasks[index]        
-    raise HTTPException(status_code=204)
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+    c.execute("UPDATE tasks SET title = ?, done = ? WHERE id = ?", (task.title, task.state, id))
+    if c.rowcount == 0:
+        raise HTTPException(status_code=404, detail=f"Task {id} not found")
+    conn.commit()
+    c.execute("SELECT * FROM tasks WHERE id = ?", (id,))
+    return c.fetchone()
+        
+
+@app.delete("/tasks/{id}", description="Delete a task")
+def delete_task(id: int):
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM tasks WHERE id = ?", (id,))
+    if c.rowcount == 0:
+        raise HTTPException(status_code=404, detail=f"Task {id} not found")
+    conn.commit()
+    return Response(status_code=204)
   
     
     
