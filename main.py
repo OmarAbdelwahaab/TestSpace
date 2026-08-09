@@ -32,7 +32,6 @@ def init_db():
     with sqlite3.connect("tasks.db") as conn:
         c = conn.cursor()
         
-        c.execute("DROP TABLE IF EXISTS tasks")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS tasks (
@@ -103,11 +102,14 @@ def add_task(task: TaskCreate):
     if task.title == "":
         raise HTTPException(status_code=404)
     tid += 1
-    new_task = [tid, task.title, False]
-    tasks.append(new_task)
-    return tasks
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (task.title, False))
+    items = c.fetchall()
+    conn.commit()
+    return(items)
 
-
+ 
 
 @app.put("/tasks/:id", description="Update a task")
 def update_task(task : TaskCreate ,tid : int):
