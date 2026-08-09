@@ -4,22 +4,35 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-
 app = FastAPI()
+
+tid = 1
+
+tasks = [
+    [1, "clean room", True],
+    [2, "Cooking a meal", False],
+    [3, "go to the gym", True],
+]
+
+tid = 3
+
+EXAMPLE_TASKS = [
+    (tasks[0][1], 1),
+    (tasks[1][1], 0),
+    (tasks[2][1], 1),
+]
+
 
 connection = sqlite3.connect('tasks.db')
 c = connection.cursor()
 
-EXAMPLE_TASKS = [
-    ("Buy groceries", 0),
-    ("Read Python documentation", 0),
-    ("Build SQLite app", 1),
-]
 
 
 def init_db():
     with sqlite3.connect("tasks.db") as conn:
         c = conn.cursor()
+        
+        c.execute("DROP TABLE IF EXISTS tasks")
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS tasks (
@@ -52,15 +65,7 @@ class TaskCreate(BaseModel):
     state: Optional[bool] = None 
     
     
-tid = 1
 
-tasks = [
-    [1, "clean room", True],
-    [2, "Cooking a meal", False],
-    [3, "go to the gym", True],
-]
-
-tid = 3
 
 @app.get("/", description="Get some details")
 def Details():
@@ -70,11 +75,25 @@ def Details():
 def CheckHealth():
     return { "status": "ok" }
 
+
+
+@app.get("/tasks", description="Get the stored tasks")
+def show_all_tasks():
+    conn = sqlite3.connect('tasks.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM tasks")
+    items = c.fetchall()
+    return(items)
+    
 @app.get("/tasks/{id}", description="Get the wanted task")
 def get_task(id: int):
     for task in tasks:
         if task[0] == id:
-            return task
+            conn = sqlite3.connect('tasks.db')
+            c = conn.cursor()
+            c.execute("SELECT * FROM tasks WHERE id = (?)", (id,))
+            item = c.fetchall()
+            return(item)
     raise HTTPException(status_code=404, detail=f"Task {id} not found")
 
 
