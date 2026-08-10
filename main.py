@@ -3,13 +3,13 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Response, status, Request
+from fastapi import Depends, FastAPI, HTTPException, Response, status, Request
 from pydantic import BaseModel
 from typing import Optional
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Runs when FastAPI starts up
+
     init_db()
     yield
 
@@ -255,17 +255,14 @@ def public_info():
     return {"message": "Welcome stranger! This info is public."}
 
 
-@app.get("/protected/profile")
-def protected_profile(request: Request):
+def get_current_user(request: Request):
     auth_header = request.headers.get("Authorization")
-
 
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Access token required",
         )
-
 
     parts = auth_header.split(" ")
     if len(parts) != 2 or not parts[1].strip():
@@ -277,7 +274,6 @@ def protected_profile(request: Request):
     token = parts[1].strip()
 
     try:
-        # Pass the token explicitly as the `jwt` parameter
         response = supabase.auth.get_user(jwt=token)
         user = response.user
 
@@ -287,21 +283,47 @@ def protected_profile(request: Request):
                 detail="Invalid or expired token",
             )
 
-        return {
-            "id": user.id,
-            "email": user.email,
-            "created_at": user.created_at,
-        }
+        return user
 
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"DEBUG ERROR: {e}")  # Check your server terminal output!
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
-        
+
+
+
+@app.get("/protected/profile")
+def protected_profile(user=Depends(get_current_user)):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "created_at": user.created_at,
+    }
+
+
+
+@app.get("/protected/dashboard")
+def protected_dashboard(user=Depends(get_current_user)):
+    return {
+        "message": f"Welcome to your dashboard, {user.email}!",
+        "user_id": user.id,
+    }
+
+
+
+@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(user=Depends(get_current_user)):
+    try:
+        supabase.auth.sign_out()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Logout failed",
+        )
         
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
