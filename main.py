@@ -266,6 +266,7 @@ def protected_profile(request: Request):
             detail="Access token required",
         )
 
+
     parts = auth_header.split(" ")
     if len(parts) != 2 or not parts[1].strip():
         raise HTTPException(
@@ -273,7 +274,34 @@ def protected_profile(request: Request):
             detail="Access token required",
         )
 
-    return {"message": "Token presented successfully"}
+    token = parts[1].strip()
+
+    try:
+        # Pass the token explicitly as the `jwt` parameter
+        response = supabase.auth.get_user(jwt=token)
+        user = response.user
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        return {
+            "id": user.id,
+            "email": user.email,
+            "created_at": user.created_at,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"DEBUG ERROR: {e}")  # Check your server terminal output!
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+        
         
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
