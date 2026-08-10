@@ -69,7 +69,8 @@ Thumbs.db
 ehthumbs.db
 
 # dotenv environment variables file
-.env.*
+.env
+!.env.example
 
 # Logs and databases
 *.log

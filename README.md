@@ -1,64 +1,62 @@
 # Task API
 
-This is a simple FastAPI-based task management API backed by SQLite. It supports reading task details, adding new tasks, updating existing tasks, and deleting tasks.
+A lightweight FastAPI service for managing task records with a local SQLite database and Supabase authentication.
 
-## Why SQLite
+## What this project is
 
-SQLite was chosen because it is a single-file embedded database with zero setup, it persists data across process restarts, and it keeps the project lightweight without requiring a separate database server.
+This project exposes a simple REST API for task management. It stores task data in a local `tasks.db` SQLite file and uses Supabase for user signup, login, and protected endpoints.
 
-## Database file
+The service includes:
+- task listing and retrieval
+- task creation, update, and deletion
+- a health check endpoint
+- Supabase-based authentication for protected routes
 
-The database is stored in `tasks.db` at the project root. It is created automatically when the app starts, and it is typically git-ignored so each fresh clone begins with a clean database.
+## Environment variables
 
-## Install and run
-
-From the project folder, run this single command:
+This app loads environment variables from a `.env` file. Create the file from the included example:
 
 ```bash
-python -m pip install -r requirements.txt && python -m uvicorn main:app --host 0.0.0.0 --port 8000
+copy .env.example .env
 ```
 
-Then open the Swagger UI at:
+Then open `.env` and replace the placeholder values:
+
+```env
+SUPABASE_URL=https://your-supabase-project-url.supabase.co
+SUPABASE_KEY=your-supabase-api-key
+```
+
+## Run the application
+
+From the project root, use this single command:
+
+```bash
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Once running, the automatic API docs are available at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Endpoints
+## API reference
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | / | Returns API name, version, and available task endpoints |
-| GET | /health | Checks whether the API is running |
-| GET | /tasks | Returns all tasks |
-| GET | /tasks/{id} | Retrieves a task by its ID |
-| POST | /tasks | Creates a new task |
-| PUT | /tasks/{id} | Updates an existing task |
-| DELETE | /tasks/{id} | Deletes a task by its ID |
-| POST | /sql | Executes a SQL query against `tasks.db` |
+| Endpoint | Method | Description | Auth required |
+|---|---|---|---|
+| `/` | GET | Returns API metadata and available routes | No |
+| `/health` | GET | Returns a basic health status | No |
+| `/tasks` | GET | Lists all tasks | No |
+| `/auth/login` | POST | Authenticates a user and returns a bearer token | No |
+| `/protected/profile` | GET | Returns the authenticated user profile | Yes |
 
-## Example request
+### Notes
 
-```bash
-curl -i http://127.0.0.1:8000/health
-```
+- Use `Authorization: Bearer <token>` for endpoints that require auth.
+- The `/auth/login` endpoint returns `access_token`, `refresh_token`, and `token_type`.
+- The `tasks.db` file is created automatically in the project root on first startup.
 
-Example response:
+## Notes on the database
 
-```http
-HTTP/1.1 200 OK
-date: Sun, 02 Aug 2026 19:31:42 GMT
-server: uvicorn
-content-length: 15
-content-type: application/json
-
-{"status":"ok"}
-```
-
-## Example SQL
-
-One example SQL query run in Stage 4:
-
-```sql
-UPDATE tasks SET done = 1;
-```
+The SQLite database is stored in `tasks.db` at the project root and is created automatically when the app starts. This file should not be checked into source control.
