@@ -1,11 +1,32 @@
-import uvicorn, requests, sqlite3
+import uvicorn, requests, sqlite3, os
+from dotenv import load_dotenv
+from supabase import create_client, Client
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Runs when FastAPI starts up
+    init_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+
 DB_FILE = Path(__file__).resolve().parent / "tasks.db"
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+@app.get("/")
+def read_root():
+    return {"message": "Server running and connected to Supabase"}
 
 EXAMPLE_TASKS = [
     ("clean room", 1),
@@ -40,15 +61,6 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Runs when FastAPI starts up
-    init_db()
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
 
 
 class TaskCreate(BaseModel):
