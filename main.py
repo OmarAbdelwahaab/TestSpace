@@ -1,6 +1,7 @@
 import uvicorn, requests, sqlite3, os
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Response, status, Request
@@ -16,6 +17,35 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+
+security = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    ):
+
+    token = credentials.credentials
+
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        user = response.user
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        return user
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+        
 
 DB_FILE = Path(__file__).resolve().parent / "tasks.db"
 
@@ -297,12 +327,7 @@ def get_current_user(request: Request):
 
 @app.get("/protected/profile")
 def protected_profile(user=Depends(get_current_user)):
-    return {
-        "id": user.id,
-        "email": user.email,
-        "created_at": user.created_at,
-    }
-
+    return {"id": user.id, "email": user.email}
 
 
 @app.get("/protected/dashboard")
@@ -325,5 +350,6 @@ def logout(user=Depends(get_current_user)):
             detail="Logout failed",
         )
         
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
