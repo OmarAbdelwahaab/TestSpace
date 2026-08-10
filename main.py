@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Response, status, Request
 from pydantic import BaseModel
 from typing import Optional
 
@@ -250,6 +250,30 @@ def login(credentials: AuthCredentials):
         )
         
         
+@app.get("/public/info")
+def public_info():
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get("/protected/profile")
+def protected_profile(request: Request):
+    auth_header = request.headers.get("Authorization")
+
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token required",
+        )
+
+    parts = auth_header.split(" ")
+    if len(parts) != 2 or not parts[1].strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token required",
+        )
+
+    return {"message": "Token presented successfully"}
         
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
