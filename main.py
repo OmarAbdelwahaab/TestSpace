@@ -129,26 +129,26 @@ def CheckHealth():
 
 
 
-@app.get("/tasks", description="Get the stored tasks")
+@app.get("/tasks", description="Get all stored tasks")
 def show_all_tasks():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM tasks")
-    items = [dict(row) for row in c.fetchall()]
-    conn.close()
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM tasks ORDER BY id ASC;")
+            items = cur.fetchall()
     return items
-    
-@app.get("/tasks/{id}", description="Get the wanted task")
-def get_task(id: int):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM tasks WHERE id = ?", (id,))
-    item = c.fetchone()
-    conn.close()
-    if item is None:
-        raise HTTPException(status_code=404, detail=f"Task {id} not found")
-    return dict(item)
 
+
+@app.get("/tasks/{id}", description="Get a specific task by ID")
+def get_task(id: int):
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM tasks WHERE id = %s;", (id,))
+            item = cur.fetchone()
+
+    if item is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return item
 
 @app.post("/tasks", description="Add a new task")
 def add_task(task: TaskCreate):
