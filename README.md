@@ -1,66 +1,76 @@
-# Task API
+# Task API (Containerized PostgreSQL Stack)
 
-A lightweight FastAPI service for managing task records with a local SQLite database and Supabase authentication.
+A lightweight FastAPI service for managing task records running against a PostgreSQL database in Docker, fully orchestrated with Docker Compose[cite: 1, 6].
 
 ## What this project is
 
-This project exposes a simple REST API for task management. It stores task data in a local `tasks.db` SQLite file and uses Supabase for user signup, login, and protected endpoints.
+This project exposes a REST API for task management[cite: 6]. Tasks are stored in a PostgreSQL database container with volume persistence[cite: 1]. The entire stack (FastAPI app + PostgreSQL) starts with a single command[cite: 1].
 
-The service includes:
-- task listing and retrieval
-- task creation, update, and deletion
-- a health check endpoint
-- Supabase-based authentication for protected routes
+## Quick Start (One Command)
 
-## Environment variables
+1. Clone the repository and navigate into the project root[cite: 1].
+2. Copy `.env.example` to create your local `.env` file[cite: 1, 3]:
+   ```bash
+   cp .env.example .env
+   ```
+3. Start the entire application stack[cite: 1]:
+   ```bash
+   docker compose up --build
+   ```
 
-This app loads environment variables from a `.env` file. Create the file from the included example:
+The API will be available at `http://localhost:8000`[cite: 1]. Interactive OpenAPI docs are available at `http://localhost:8000/docs`.
 
-```bash
-copy .env.example .env
-```
+## Environment Variables
 
-Then open `.env` and replace the placeholder values:
+The application relies on variables defined in `.env`[cite: 1, 3, 6]:
 
-```env
-SUPABASE_URL=https://your-supabase-project-url.supabase.co
-SUPABASE_KEY=your-supabase-api-key
-```
+| Variable | Description | Example |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:dev@db:5432/tasks`[cite: 1] |
+| `SUPABASE_URL` | Supabase API URL | `[https://your-project.supabase.co](https://your-project.supabase.co)`[cite: 3] |
+| `SUPABASE_KEY` | Supabase API Key | `your-supabase-key`[cite: 3] |
 
-## Run the application
+## API Endpoints
 
-From the project root, use this single command:
-
-```bash
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-Once running, the automatic API docs are available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## API reference
-
-| Endpoint | Method | Description | Auth required |
+| Endpoint | Method | Description | Status Codes |
 |---|---|---|---|
-| `/` | GET | Returns API metadata and available routes | No |
-| `/health` | GET | Returns a basic health status | No |
-| `/tasks` | GET | Lists all tasks | No |
-| `/auth/login` | POST | Authenticates a user and returns a bearer token | No |
-| `/protected/profile` | GET | Returns the authenticated user profile | Yes |
+| `/health` | GET | Basic health check | `200` |
+| `/tasks` | GET | List all tasks | `200`[cite: 1] |
+| `/tasks/{id}` | GET | Fetch a specific task by ID | `200`, `404`[cite: 1] |
+| `/tasks` | POST | Create a new task | `201`, `400`[cite: 1] |
+| `/tasks/{id}` | PUT | Update an existing task | `200`, `400`, `404`[cite: 1] |
+| `/tasks/{id}` | DELETE | Delete a task | `204`, `404`[cite: 1] |
 
-### Notes
+## Sample `curl` Output
 
-- Use `Authorization: Bearer <token>` for endpoints that require auth.
-- The `/auth/login` endpoint returns `access_token`, `refresh_token`, and `token_type`.
-- The `tasks.db` file is created automatically in the project root on first startup.
+```bash
+$ curl -i http://localhost:8000/tasks
 
-## Notes on the database
+HTTP/1.1 200 OK
+date: Wed, 12 Aug 2026 09:00:00 GMT
+server: uvicorn
+content-length: 142
+content-type: application/json
 
-The SQLite database is stored in `tasks.db` at the project root and is created automatically when the app starts. This file should not be checked into source control.
+[
+  {"id": 1, "title": "clean room", "done": true},
+  {"id": 2, "title": "Cooking a meal", "done": false},
+  {"id": 3, "title": "go to the gym", "done": true}
+]
+```
 
-## Local Setup
+## Database Inspection Proof
 
-- docker run.
+To query the database inside the container directly[cite: 1]:
+
+```bash
+docker exec -it testspace-db-1 psql -U postgres -d tasks -c "SELECT * FROM tasks;"
+```
+```text
+ id |     title      | done 
+----+----------------+------
+  1 | clean room     | t
+  2 | Cooking a meal | f
+  3 | go to the gym  | t
+(3 rows)
+```
