@@ -1,4 +1,6 @@
 import uvicorn, requests, sqlite3, os
+import psycopg
+from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -17,6 +19,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def get_db_connection():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not configured in .env")
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 security = HTTPBearer()
 
@@ -61,32 +71,33 @@ def read_root():
     return {"message": "Server running and connected to Supabase"}
 
 EXAMPLE_TASKS = [
-    ("clean room", 1),
-    ("Cooking a meal", 0),
-    ("go to the gym", 1),
+    ("clean room", True),
+    ("Cooking a meal", False),
+    ("go to the gym", True),
 ]
 
-
 def init_db():
-    with sqlite3.connect(DB_FILE) as conn:
-        c = conn.cursor()
-        
-        c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY,
-                title TEXT NOT NULL,
-                done BOOLEAN NOT NULL DEFAULT 0
-            )
-        """
-        )
-        c.execute("SELECT COUNT(*) FROM tasks")
-        if c.fetchone()[0] == 0:
-            c.executemany(
-                "INSERT INTO tasks (title, done) VALUES (?, ?)", EXAMPLE_TASKS
-            )
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # Create tasks table if missing
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    done BOOLEAN NOT NULL DEFAULT FALSE
+                );
+            """)
+            
+            # Seed only if empty
+            cur.execute("SELECT COUNT(*) FROM tasks;")
+            count = cur.fetchone()["count"]
+            
+            if count == 0:
+                cur.executemany(
+                    "INSERT INTO tasks (title, done) VALUES (%s, %s);",
+                    EXAMPLE_TASKS
+                )
         conn.commit()
-
 
 def get_connection():
     conn = sqlite3.connect(DB_FILE)
