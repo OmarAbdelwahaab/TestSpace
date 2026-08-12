@@ -60,3 +60,7 @@ http://127.0.0.1:8000/docs
 ## Notes on the database
 
 The SQLite database is stored in `tasks.db` at the project root and is created automatically when the app starts. This file should not be checked into source control.
+
+## Local Setup
+
+- docker run.
