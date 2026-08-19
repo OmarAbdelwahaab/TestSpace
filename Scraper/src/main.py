@@ -25,6 +25,15 @@ HEADERS = {
 TIMEOUT_SECONDS = 10
 REQUEST_DELAY_SECONDS = 0.5
 
+# Tracking metrics for run report
+stats = {
+    "pages_fetched": 0,
+    "cache_hits": 0,
+    "failed_pages": 0,
+    "valid_records": 0,
+    "invalid_records": 0,
+}
+
 
 # --- Pydantic Schema ---
 class BookRecord(BaseModel):
@@ -44,18 +53,44 @@ def fetch_and_cache(url: str, cache_file_name: str) -> tuple[str, bool]:
     cache_path = CACHE_DIR / cache_file_name
 
     if cache_path.exists():
-        html_content = cache_path.read_text(encoding="utf-8")
-        return html_content, True
+        stats["cache_hits"] += 1
+        return cache_path.read_text(encoding="utf-8"), True
 
-    time.sleep(REQUEST_DELAY_SECONDS)
+    # Retry logic: retry once on timeout or 5xx; do NOT retry 404 or 403
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        try:
+            time.sleep(REQUEST_DELAY_SECONDS)
+            response = requests.get(url, headers=HEADERS, timeout=TIMEOUT_SECONDS)
 
-    response = requests.get(url, headers=HEADERS, timeout=TIMEOUT_SECONDS)
-    if response.status_code != 200:
-        raise RuntimeError(f"Failed to fetch {url}. Status code: {response.status_code}")
+            if response.status_code == 200:
+                stats["pages_fetched"] += 1
+                html_content = response.text
+                cache_path.write_text(html_content, encoding="utf-8")
+                return html_content, False
 
-    html_content = response.text
-    cache_path.write_text(html_content, encoding="utf-8")
-    return html_content, False
+            # Permanent failure: do not retry 404 or 403
+            if response.status_code in (403, 404):
+                raise requests.HTTPError(
+                    f"HTTP {response.status_code} (Non-retryable)", response=response
+                )
+
+            # Server error 5xx: retry once if attempts remain
+            if 500 <= response.status_code < 600 and attempt < max_attempts:
+                print(f"[RETRY] Server error {response.status_code} on {url}. Retrying in 1s...")
+                time.sleep(1.0)
+                continue
+
+            raise requests.HTTPError(f"HTTP {response.status_code}", response=response)
+
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            if attempt < max_attempts:
+                print(f"[RETRY] Network issue on {url} ({exc}). Retrying in 1s...")
+                time.sleep(1.0)
+                continue
+            raise
+
+    raise RuntimeError(f"Exhausted retries for {url}")
 
 
 def discover_book_urls(start_url: str, max_pages: int = 3) -> list[dict[str, str]]:
@@ -128,7 +163,6 @@ def extract_book_details(product_url: str, source_page: str) -> dict:
 
 
 def normalize_and_validate(raw_record: dict) -> tuple[Optional[dict], Optional[dict]]:
-    # Convert '£51.77' to float 51.77
     raw_price = raw_record.get("price_text") or ""
     match = re.search(r"[\d.]+", raw_price)
     price_gbp = float(match.group()) if match else None
@@ -140,7 +174,6 @@ def normalize_and_validate(raw_record: dict) -> tuple[Optional[dict], Optional[d
 
     try:
         validated = BookRecord(**normalized_candidate)
-        # Convert Pydantic model to a standard dict (casting HttpUrl to string)
         return validated.model_dump(mode="json"), None
     except ValidationError as exc:
         return None, {
@@ -150,11 +183,11 @@ def normalize_and_validate(raw_record: dict) -> tuple[Optional[dict], Optional[d
 
 
 def main():
+    start_time = datetime.now(timezone.utc)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     discovered_books = discover_book_urls(START_URL, MAX_CATALOGUE_PAGES)
     
-    # Canonical URL deduplication
     seen_urls = set()
     unique_books = []
     for item in discovered_books:
@@ -162,31 +195,56 @@ def main():
             seen_urls.add(item["product_url"])
             unique_books.append(item)
 
-    print(f"Extracting, normalizing, and validating {len(unique_books)} books...")
+    # Injected broken URL to prove failure tolerance (Step 4 of Stage 5)
+    unique_books.append({
+        "product_url": "https://books.toscrape.com/catalogue/non-existent-broken-page-test_9999/index.html",
+        "source_page": START_URL,
+    })
+
+    print(f"Processing {len(unique_books)} books (including 1 intentional failure test)...")
     valid_records = []
     error_records = []
 
     for book in unique_books:
-        raw_record = extract_book_details(book["product_url"], book["source_page"])
-        valid_doc, error_doc = normalize_and_validate(raw_record)
-        
-        if valid_doc:
-            valid_records.append(valid_doc)
-        else:
-            error_records.append(error_doc)
+        try:
+            raw_record = extract_book_details(book["product_url"], book["source_page"])
+            valid_doc, error_doc = normalize_and_validate(raw_record)
+            
+            if valid_doc:
+                valid_records.append(valid_doc)
+            else:
+                error_records.append(error_doc)
+        except Exception as exc:
+            print(f"[SKIPPED] Failed processing {book['product_url']}: {exc}")
+            stats["failed_pages"] += 1
 
-    # Save validated records
+    stats["valid_records"] = len(valid_records)
+    stats["invalid_records"] = len(error_records)
+
+    # Save output artifacts
     books_file = OUTPUT_DIR / "books.json"
     books_file.write_text(json.dumps(valid_records, indent=2), encoding="utf-8")
 
-    # Save error records if any
     if error_records:
         errors_file = OUTPUT_DIR / "errors.json"
         errors_file.write_text(json.dumps(error_records, indent=2), encoding="utf-8")
 
-    print(f"Validated records written to {books_file} : {len(valid_records)}")
-    if error_records:
-        print(f"Errors written: {len(error_records)}")
+    end_time = datetime.now(timezone.utc)
+    duration_seconds = round((end_time - start_time).total_seconds(), 2)
+
+    # Write run report
+    run_report = {
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "duration_seconds": duration_seconds,
+        **stats,
+    }
+    report_file = OUTPUT_DIR / "run-report.json"
+    report_file.write_text(json.dumps(run_report, indent=2), encoding="utf-8")
+
+    print("\n--- Run Report ---")
+    print(json.dumps(run_report, indent=2))
+    print("------------------\n")
 
 
 if __name__ == "__main__":
